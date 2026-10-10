@@ -21,3 +21,25 @@ use in the browser).
 Back up the Secrets together with the database and the archive. ENCRYPTION_KEY protects the stored
 mailbox credentials and STORAGE_ENCRYPTION_KEY (if set) the archived files; without them that data
 cannot be read. Generated Secrets stay in the namespace after `helm uninstall`.
+To remove everything after `helm uninstall`, including the archive and its keys:
+
+  kubectl --namespace {{ .Release.Namespace }} delete secret,pvc -l app.kubernetes.io/instance={{ .Release.Name }}
+{{- if and (eq .Values.storage.type "local") (not .Values.storage.persistence.enabled) }}
+
+WARNING: storage.persistence.enabled is false, so the archive is kept in an emptyDir and is LOST
+whenever the pod is deleted or moved. Use this for tests only.
+{{- end }}
+{{- if and (not .Values.valkey.enabled) (not (include "open-archiver.redis.hasPassword" .)) }}
+
+WARNING: no password is set for the external Redis. Anyone who can reach it can add jobs to the
+app's queues.
+{{- end }}
+{{- if and (not .Values.meilisearch.enabled) (not (include "open-archiver.meilisearch.hasKey" .)) }}
+
+WARNING: no master key is set for the external Meilisearch, which holds the text of every email.
+{{- end }}
+{{- if and (not .Values.secrets.storageEncryptionKey) (not .Values.secrets.existingSecret) }}
+
+Archived files are stored unencrypted. Set secrets.storageEncryptionKey before archiving anything
+if you need encryption at rest.
+{{- end }}

@@ -9,6 +9,10 @@ appUrl gets 403 on every login. Catch that at install time instead.
 {{- if not (has $appHost $hosts) }}
 {{- fail (printf "appUrl host %q is not one of ingress.hosts %v. Set appUrl to the address users open." $appHost $hosts) }}
 {{- end }}
+{{- /* The login token is a cookie without the Secure flag, so plain HTTP exposes it. */}}
+{{- if and (not .Values.ingress.allowInsecureHttp) (or (ne (urlParse .Values.appUrl).scheme "https") (not .Values.ingress.tls)) }}
+{{- fail "ingress needs appUrl with https:// and ingress.tls. Set ingress.allowInsecureHttp: true only for tests." }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

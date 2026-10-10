@@ -9,6 +9,9 @@ image:
   repository: logiclabshq/open-archiver
   # -- Image tag. Defaults to the chart's appVersion.
   tag: ""
+  # -- Image digest (sha256:...). When set, it is used instead of the tag, so a re-pushed tag cannot
+  # change what runs.
+  digest: ""
   pullPolicy: IfNotPresent
 
 # -- Secrets for pulling images from a private registry
@@ -23,19 +26,23 @@ appUrl: http://localhost:3000
 # anything left out uses the app's own default. Secrets do not belong here, see `secrets`.
 # Set by the chart and not overridable here: PORT_BACKEND, PORT_FRONTEND, NODE_ENV, APP_URL, ORIGIN,
 # STORAGE_*, DATABASE_URL, REDIS_*, MEILI_HOST, MEILI_MASTER_KEY, TIKA_URL and the secrets.
+# Names that look like secrets (…PASSWORD, …SECRET, …TOKEN, …_KEY) are refused: env ends up in a
+# ConfigMap. Pass those through extraEnv with a secretKeyRef.
 env:
   # Required by the app
   JWT_EXPIRES_IN: 7d
+  # Largest upload the web UI accepts (PST, mbox and EML imports). The app's own default is 512K.
+  BODY_SIZE_LIMIT: 100M
   # SYNC_FREQUENCY: "* * * * *"
   # ALL_INCLUSIVE_ARCHIVE: "false"
   # ENABLE_DELETION: "false"
-  # BODY_SIZE_LIMIT: 100M
   # INGESTION_WORKER_CONCURRENCY: "5"
 
 # -- Heap ceiling of the indexing worker in MB (INDEXING_WORKER_MAX_OLD_SPACE_MB). It shares the
 # container with the frontend, API, ingestion worker and scheduler, so keep it well below
-# resources.limits.memory. If the container runs out of memory, the kernel kills the biggest
-# process, and a killed API is not restarted inside the container.
+# resources.limits.memory. When the container runs out of memory, most current clusters (cgroup v2)
+# restart the whole container; on older ones the kernel kills only the biggest process, and a
+# killed API is not restarted inside the container until the liveness probe notices.
 indexingWorkerMaxOldSpaceMb: 1536
 
 # -- Extra environment variables for the app container, as a list of EnvVar objects
@@ -58,8 +65,13 @@ secrets:
   # generates 64 hex characters. Losing it makes the saved credentials unreadable.
   encryptionKey: ""
   # -- Optional, 64 hex characters; encrypts archived files at rest (key: storage-encryption-key).
-  # Not generated: once files are written with a key, losing it makes them unreadable.
+  # Not generated. Once set, the chart keeps it on upgrades and refuses a different one, because
+  # files written with a key cannot be read without it. Store a copy apart from the archive backup.
+  # Search indexes and the database are not covered by it.
   storageEncryptionKey: ""
+  # -- Stop the pod when the storage key is missing instead of archiving unencrypted. Turn on once
+  # the archive is encrypted, especially with existingSecret.
+  requireStorageEncryptionKey: false
 
 storage:
   # -- Where archived emails are stored: local or s3
@@ -89,6 +101,7 @@ storage:
     secretAccessKey: ""
 
 service:
+  # -- Prefer ClusterIP and expose the app through an Ingress.
   type: ClusterIP
   # -- Port of the web UI (the SvelteKit frontend, which proxies the API)
   port: 3000
@@ -98,6 +111,9 @@ ingress:
   className: ""
   # -- e.g. nginx.ingress.kubernetes.io/proxy-body-size: 100m, so uploads up to BODY_SIZE_LIMIT pass
   annotations: {}
+  # -- Allow appUrl with http:// or an Ingress without tls. The login token is a cookie without the
+  # Secure flag, so use this for tests only.
+  allowInsecureHttp: false
   # -- The host of appUrl must be one of these
   hosts:
     - host: archive.example.com
@@ -135,15 +151,20 @@ readinessProbe:
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
-# -- Restarts the pod when the frontend or the API hangs. Does not touch the database, so a
-# database outage does not restart a healthy pod.
+# -- Restarts the pod when the frontend (3000) or the API (4000) process is gone. A plain TCP check
+# on both ports.
+# Does not touch the database, so a database outage does not restart the pod.
 livenessProbe:
-  httpGet:
-    path: /api
-    port: http
+  exec:
+    command: ["sh", "-c", "nc -z 127.0.0.1 3000 && nc -z 127.0.0.1 4000"]
   periodSeconds: 20
   timeoutSeconds: 5
   failureThreshold: 3
+
+# Scratch space for imports (PST, mbox, zip), mounted at /tmp
+tmpVolume:
+  # -- Size limit. An import that outgrows it evicts the pod instead of filling the node's disk.
+  sizeLimit: 10Gi
 
 # -- Extra volumes for the pod, e.g. a share for the app's "Local Path" import
 extraVolumes: []
@@ -155,6 +176,10 @@ extraVolumeMounts: []
 # to the npm registry, and the first start can take a few minutes.
 podAnnotations: {}
 podLabels: {}
+# -- Run the pod in a user namespace (hostUsers: false), so root in the container is an
+# unprivileged user on the node. Needs Kubernetes 1.33+ and a runtime and filesystem that support
+# it. Unset leaves the cluster default.
+hostUsers: null
 # -- Pod security context. The image runs as root: its entrypoint runs `pnpm install` and
 # migrations on start and writes to /app, so runAsNonRoot is not possible without an image change.
 podSecurityContext: {}
@@ -169,6 +194,14 @@ securityContext:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+networkPolicy:
+  # -- Allow traffic to the web UI port only, keeping the internal API port (4000) closed to other
+  # pods. Needs a CNI that enforces NetworkPolicy.
+  enabled: true
+  # -- Who may reach the web UI, as NetworkPolicy peers (e.g. the Ingress controller's namespace).
+  # Empty allows every source.
+  ingressFrom: []
 
 serviceAccount:
   # -- Create a ServiceAccount for the app
@@ -216,8 +249,10 @@ externalDatabase:
   # PGPASSWORD, not inside the connection URL.
   existingSecret: ""
   existingSecretPasswordKey: postgres-password
-  # -- sslmode for the connection, e.g. require for most managed databases (RDS, Azure). Empty
-  # leaves it out.
+  # -- sslmode for the connection. Use verify-full: require encrypts but does not check the server's
+  # certificate, so it does not stop a man in the middle. For a private CA such as the RDS one, mount
+  # the CA bundle with extraVolumes/extraVolumeMounts and point NODE_EXTRA_CA_CERTS (extraEnv) at it.
+  # Empty leaves it out.
   sslMode: ""
 
 # Bundled Valkey (Redis compatible) for the job queues. Disable it to use externalRedis.
@@ -252,7 +287,8 @@ externalRedis:
   password: ""
   existingSecret: ""
   existingSecretPasswordKey: redis-password
-  # -- Connect with TLS. The app does not verify the server certificate.
+  # -- Connect with TLS. The app does not verify the server certificate, so this protects against
+  # eavesdropping only: keep the connection on a private network path.
   tls: false
 
 # Bundled Meilisearch for full-text search. Disable it to use externalMeilisearch.

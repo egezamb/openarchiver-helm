@@ -3,6 +3,9 @@
 {{- if or (has $key $reserved) (hasPrefix "STORAGE_" $key) }}
 {{- fail (printf "env.%s is set by the chart. Use the matching chart value instead (see values.yaml)." $key) }}
 {{- end }}
+{{- if regexMatch "(?i)(PASSWORD|SECRET|TOKEN|_KEY)$" $key }}
+{{- fail (printf "env.%s looks like a secret, and env ends up in a ConfigMap. Use extraEnv with a secretKeyRef instead." $key) }}
+{{- end }}
 {{- end }}
 apiVersion: v1
 kind: ConfigMap
@@ -13,7 +16,7 @@ metadata:
 data:
   # The backend listens on PORT_BACKEND inside the pod; only the frontend port is exposed.
   PORT_BACKEND: "4000"
-  PORT_FRONTEND: {{ .Values.service.port | quote }}
+  PORT_FRONTEND: "3000"
   NODE_ENV: production
   APP_URL: {{ .Values.appUrl | trimSuffix "/" | quote }}
   ORIGIN: {{ .Values.appUrl | trimSuffix "/" | quote }}

@@ -17,8 +17,12 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- /* Only values the user sets; generated ones would differ between renders. */}}
-        checksum/secrets: {{ pick .Values.secrets "jwtSecret" "encryptionKey" "storageEncryptionKey" "existingSecret" | toJson | sha256sum }}
+        {{- /*
+        Every secret input the user gives, so changing a password restarts the pod (env vars from a
+        Secret are read only when the container starts). Generated values are left out: they would
+        differ between renders without cluster access.
+        */}}
+        checksum/secrets: {{ list .Values.secrets (pick .Values.postgresql "auth") .Values.externalDatabase (pick .Values.valkey "auth") .Values.externalRedis (pick .Values.meilisearch "masterKey" "existingSecret") .Values.externalMeilisearch .Values.storage.s3 | toJson | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -34,6 +38,9 @@ spec:
       {{- end }}
       serviceAccountName: {{ include "open-archiver.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- if not (kindIs "invalid" .Values.hostUsers) }}
+      hostUsers: {{ .Values.hostUsers }}
+      {{- end }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
@@ -48,7 +55,7 @@ spec:
           {{- end }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.port }}
+              containerPort: 3000
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -67,15 +74,14 @@ spec:
                 secretKeyRef:
                   name: {{ include "open-archiver.secretName" . }}
                   key: encryption-key
-            {{- if or .Values.secrets.existingSecret .Values.secrets.storageEncryptionKey }}
             - name: STORAGE_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "open-archiver.secretName" . }}
                   key: storage-encryption-key
-                  # Optional in an existing Secret: without it, files are stored unencrypted.
-                  optional: true
-            {{- end }}
+                  # Without the key, files are stored unencrypted. requireStorageEncryptionKey makes
+                  # a missing key stop the pod instead.
+                  optional: {{ not .Values.secrets.requireStorageEncryptionKey }}
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
@@ -127,6 +133,8 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             {{- if eq .Values.storage.type "local" }}
             - name: data
               mountPath: {{ .Values.storage.localRootPath }}
@@ -135,6 +143,13 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        # Mailbox and file imports unpack into /tmp. A size limit evicts this pod alone when an
+        # import outgrows it, instead of filling the node's disk.
+        - name: tmp
+          emptyDir:
+            {{- with .Values.tmpVolume.sizeLimit }}
+            sizeLimit: {{ . }}
+            {{- end }}
         {{- if eq .Values.storage.type "local" }}
         - name: data
           {{- with include "open-archiver.storage.claimName" . }}
