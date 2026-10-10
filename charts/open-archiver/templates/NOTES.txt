@@ -1,0 +1,18 @@
+Open Archiver {{ .Chart.AppVersion }} is being deployed as "{{ include "open-archiver.fullname" . }}".
+
+The first start runs the database migrations and can take a few minutes. Watch it with:
+
+  kubectl --namespace {{ .Release.Namespace }} logs -f deploy/{{ include "open-archiver.fullname" . }}
+
+{{- if .Values.ingress.enabled }}
+
+Open: {{ .Values.appUrl }}
+{{- else }}
+
+Open the web UI locally:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "open-archiver.fullname" . }} 3000:{{ .Values.service.port }}
+
+then go to http://localhost:3000 (appUrl is "{{ .Values.appUrl }}"; it must match the address you
+use in the browser).
+{{- end }}

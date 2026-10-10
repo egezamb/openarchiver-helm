@@ -1,0 +1,262 @@
+# Default values for open-archiver.
+
+# -- Override the chart name used in resource names
+nameOverride: ""
+# -- Override the full resource name prefix
+fullnameOverride: ""
+
+image:
+  repository: logiclabshq/open-archiver
+  # -- Image tag. Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# -- Secrets for pulling images from a private registry
+imagePullSecrets: []
+
+# -- Public URL of Open Archiver, without a trailing slash. Used for CORS, as the SvelteKit ORIGIN
+# and to build the OAuth redirect URI ({appUrl}/api/v1/oauth/callback).
+appUrl: http://localhost:3000
+
+# Settings passed to the app as environment variables. Secrets do not belong here, see `secrets`.
+config:
+  # -- Cron expression for continuous mailbox sync
+  syncFrequency: "* * * * *"
+  # -- Include Junk and Trash folders in the archive
+  allInclusiveArchive: false
+  # -- Archive unsent drafts from live mailboxes
+  archiveDrafts: false
+  # -- Allow deleting emails and ingestion sources
+  enableDeletion: false
+  # -- Largest request body the frontend accepts, e.g. 100M, 5G or Infinity
+  bodySizeLimit: 100M
+  # -- Mailbox jobs the ingestion worker runs at once (max 32)
+  ingestionWorkerConcurrency: 5
+  # -- Emails archived at once within one mailbox (max 32)
+  ingestionEmailConcurrency: 3
+  # -- Indexing jobs run at once (max 32)
+  indexingWorkerConcurrency: 4
+  # -- Heap ceiling of the indexing worker in MB. Keep it below the container memory limit.
+  indexingWorkerMaxOldSpaceMb: 2048
+  # -- Lifetime of login tokens
+  jwtExpiresIn: 7d
+  # -- Rate limit window in milliseconds
+  rateLimitWindowMs: 60000
+  # -- Requests allowed per IP within the window
+  rateLimitMaxRequests: 100
+
+# -- Extra environment variables for the app container, as a list of EnvVar objects
+extraEnv: []
+# -- Extra environment variables loaded from ConfigMaps or Secrets (envFrom)
+extraEnvFrom: []
+
+# Application secrets. Leave a value empty to have the chart generate it on first install and keep
+# it on upgrades. Or point `existingSecret` at a Secret you manage yourself.
+secrets:
+  # -- Name of an existing Secret with the keys below. When set, the chart creates no app Secret.
+  existingSecret: ""
+  # -- Signs login tokens (key: jwt-secret)
+  jwtSecret: ""
+  # -- 64 hex characters; encrypts mailbox credentials (key: encryption-key)
+  encryptionKey: ""
+  # -- Optional, 64 hex characters; encrypts archived files at rest (key: storage-encryption-key).
+  # Not generated: once files are written with a key, losing it makes them unreadable.
+  storageEncryptionKey: ""
+
+storage:
+  # -- Where archived emails are stored: local or s3
+  type: local
+  # -- Path inside the container for local storage. The app needs it set even with s3.
+  localRootPath: /var/data/open-archiver
+  # Volume for local storage
+  persistence:
+    enabled: true
+    # -- Use an existing PersistentVolumeClaim instead of creating one
+    existingClaim: ""
+    # -- StorageClass. Empty uses the cluster default.
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 20Gi
+  s3:
+    endpoint: ""
+    bucket: ""
+    region: ""
+    # -- Set to true for MinIO and other non-AWS S3 services
+    forcePathStyle: false
+    # -- Existing Secret with the keys s3-access-key-id and s3-secret-access-key
+    existingSecret: ""
+    accessKeyId: ""
+    secretAccessKey: ""
+
+service:
+  type: ClusterIP
+  # -- Port of the web UI (the SvelteKit frontend, which proxies the API)
+  port: 3000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: archive.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: archive-example-com-tls
+  #    hosts:
+  #      - archive.example.com
+
+# -- Resources for the app container. The indexing worker alone may use up to
+# config.indexingWorkerMaxOldSpaceMb of heap.
+resources:
+  requests:
+    cpu: 250m
+    memory: 1Gi
+  limits:
+    memory: 3Gi
+
+podAnnotations: {}
+podLabels: {}
+# -- Pod security context. The image runs as root: its entrypoint runs `pnpm install` and
+# migrations on start and writes to /app, so runAsNonRoot is not possible without an image change.
+podSecurityContext: {}
+# -- Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+serviceAccount:
+  # -- Create a ServiceAccount for the app
+  create: true
+  # -- Name of the ServiceAccount. Defaults to the full name.
+  name: ""
+  # -- The app does not talk to the Kubernetes API
+  automountServiceAccountToken: false
+
+# Bundled PostgreSQL. Disable it to use externalDatabase.
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: 17-alpine
+    pullPolicy: IfNotPresent
+  auth:
+    database: open_archive
+    username: open_archiver
+    # -- Generated when empty
+    password: ""
+    # -- Existing Secret holding the password
+    existingSecret: ""
+    existingSecretPasswordKey: postgres-password
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 8Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+# Used when postgresql.enabled is false
+externalDatabase:
+  host: ""
+  port: 5432
+  database: open_archive
+  username: ""
+  password: ""
+  # -- Existing Secret holding the password
+  existingSecret: ""
+  existingSecretPasswordKey: postgres-password
+
+# Bundled Valkey (Redis compatible) for the job queues. Disable it to use externalRedis.
+valkey:
+  enabled: true
+  image:
+    repository: valkey/valkey
+    tag: 8-alpine
+    pullPolicy: IfNotPresent
+  auth:
+    # -- Generated when empty
+    password: ""
+    existingSecret: ""
+    existingSecretPasswordKey: redis-password
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 512Mi
+
+# Used when valkey.enabled is false
+externalRedis:
+  host: ""
+  port: 6379
+  # -- Only for servers with ACL users. Leave empty for a server that uses requirepass alone.
+  username: ""
+  password: ""
+  existingSecret: ""
+  existingSecretPasswordKey: redis-password
+  tls: false
+
+# Bundled Meilisearch for full-text search. Disable it to use externalMeilisearch.
+meilisearch:
+  enabled: true
+  image:
+    repository: getmeili/meilisearch
+    tag: v1.38
+    pullPolicy: IfNotPresent
+  # -- Generated when empty
+  masterKey: ""
+  existingSecret: ""
+  existingSecretKey: meili-master-key
+  # -- Seconds between snapshots
+  snapshotInterval: 86400
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 2Gi
+
+# Used when meilisearch.enabled is false
+externalMeilisearch:
+  url: ""
+  masterKey: ""
+  existingSecret: ""
+  existingSecretKey: meili-master-key
+
+# Bundled Apache Tika for text extraction from attachments. Without Tika the app uses its built-in
+# PDF extractor.
+tika:
+  enabled: true
+  image:
+    repository: apache/tika
+    tag: 3.2.2.0-full
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1536Mi
+
+# -- URL of an external Tika server, used when tika.enabled is false. Empty disables Tika.
+externalTika:
+  url: ""
