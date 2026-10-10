@@ -278,3 +278,39 @@ capabilities:
 seccompProfile:
   type: RuntimeDefault
 {{- end }}
+
+{{/*
+Pod labels of a bundled service. Leaves out helm.sh/chart and the app version, which would restart
+the database on every chart release and describe the wrong software; the version is the service's
+own image tag.
+Usage: include "open-archiver.componentPodLabels" (dict "root" . "component" "valkey" "image" .Values.valkey.image)
+*/}}
+{{- define "open-archiver.componentPodLabels" -}}
+{{ include "open-archiver.selectorLabels" . }}
+app.kubernetes.io/version: {{ .image.tag | quote }}
+app.kubernetes.io/managed-by: {{ .root.Release.Service }}
+app.kubernetes.io/part-of: open-archiver
+{{- end }}
+
+{{/*
+Pull secrets and scheduling of a bundled service, from its values block.
+Usage: include "open-archiver.componentPodSpec" (dict "root" . "values" .Values.valkey)
+*/}}
+{{- define "open-archiver.componentPodSpec" -}}
+{{- with .root.Values.imagePullSecrets }}
+imagePullSecrets:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .values.nodeSelector }}
+nodeSelector:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .values.affinity }}
+affinity:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .values.tolerations }}
+tolerations:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

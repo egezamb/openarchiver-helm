@@ -9,16 +9,25 @@ metadata:
   labels:
     {{- $labels | nindent 4 }}
 data:
-  # Runs once, when the database is created: adds the app role as owner of the database. Since
-  # PostgreSQL 15 the public schema belongs to the database owner, so the role can run migrations.
+  # These run once, when the database is created.
+  # Adds the app role as owner of the database. Since PostgreSQL 15 the public schema belongs to the
+  # database owner, so the role can run migrations. The values come from the environment through
+  # \getenv, so the password is never on a command line.
   10-app-role.sh: |
     #!/bin/sh
     set -eu
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
-      --set=app_user="$APP_DB_USER" --set=app_password="$APP_DB_PASSWORD" --set=db="$POSTGRES_DB" <<'SQL'
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
+    \getenv app_user APP_DB_USER
+    \getenv app_password APP_DB_PASSWORD
+    \getenv db POSTGRES_DB
     CREATE ROLE :"app_user" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD :'app_password';
     ALTER DATABASE :"db" OWNER TO :"app_user";
     SQL
+  # The superuser may log in over the local socket only (kubectl exec), never over the network.
+  20-superuser-local-only.sh: |
+    #!/bin/sh
+    set -eu
+    sed -i '1i host all postgres all reject' "$PGDATA/pg_hba.conf"
 ---
 apiVersion: v1
 kind: Service
@@ -49,11 +58,20 @@ spec:
       {{- $selector | nindent 6 }}
   template:
     metadata:
+      {{- if or .Values.postgresql.podAnnotations false }}
+      annotations:
+        {{- with .Values.postgresql.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
       labels:
-        {{- $labels | nindent 8 }}
+        {{- include "open-archiver.componentPodLabels" (dict "root" . "component" "postgresql" "image" .Values.postgresql.image) | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      {{- include "open-archiver.componentPodSpec" (dict "root" . "values" .Values.postgresql) | nindent 6 }}
       securityContext:
+        # Change ownership only when the volume root does not match, not on every start.
+        fsGroupChangePolicy: OnRootMismatch
         runAsNonRoot: true
         runAsUser: 70
         fsGroup: 70

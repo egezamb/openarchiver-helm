@@ -31,11 +31,23 @@ spec:
       {{- $selector | nindent 6 }}
   template:
     metadata:
+      {{- if or .Values.valkey.podAnnotations true }}
+      annotations:
+        # The password is read only at start, so a new one must restart the pod. A changed
+        # existingSecret needs a manual restart.
+        checksum/auth: {{ pick .Values.valkey "auth" | toJson | sha256sum }}
+        {{- with .Values.valkey.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
       labels:
-        {{- $labels | nindent 8 }}
+        {{- include "open-archiver.componentPodLabels" (dict "root" . "component" "valkey" "image" .Values.valkey.image) | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      {{- include "open-archiver.componentPodSpec" (dict "root" . "values" .Values.valkey) | nindent 6 }}
       securityContext:
+        # Change ownership only when the volume root does not match, not on every start.
+        fsGroupChangePolicy: OnRootMismatch
         runAsNonRoot: true
         runAsUser: 999
         fsGroup: 1000
@@ -47,8 +59,9 @@ spec:
           securityContext:
             {{- include "open-archiver.componentSecurityContext" 999 | nindent 12 }}
           # The password goes into a config file, not onto the command line, where any process
-          # list would show it. noeviction: the job queues must never lose keys under memory
-          # pressure; appendonly keeps queued jobs across restarts.
+          # list would show it. maxmemory with noeviction: past the limit, writes fail with an error
+          # instead of the container being OOM-killed or queued jobs being dropped. appendonly
+          # keeps queued jobs across restarts.
           command:
             - tini
             - --
@@ -58,7 +71,7 @@ spec:
               set -eu
               escaped=$(printf '%s' "$REDISCLI_AUTH" | sed 's/\\/\\\\/g; s/"/\\"/g')
               printf 'requirepass "%s"\n' "$escaped" > /run/valkey/valkey.conf
-              exec valkey-server /run/valkey/valkey.conf --dir /data --appendonly yes --maxmemory-policy noeviction
+              exec valkey-server /run/valkey/valkey.conf --dir /data --appendonly yes --maxmemory {{ .Values.valkey.maxmemory }} --maxmemory-policy noeviction
           ports:
             - name: valkey
               containerPort: 6379
@@ -69,6 +82,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "open-archiver.redis.secretName" . }}
                   key: {{ include "open-archiver.redis.secretKey" . }}
+          # A large append-only file takes a while to load at start.
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "valkey-cli -h 127.0.0.1 ping | grep -q PONG"]
+            periodSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             exec:
               command: ["sh", "-c", "valkey-cli -h 127.0.0.1 ping | grep -q PONG"]

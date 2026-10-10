@@ -53,10 +53,10 @@ spec:
         - name: wait-for-database
           image: {{ include "open-archiver.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- with .Values.securityContext }}
+          # Unlike the app, this needs no root.
           securityContext:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- include "open-archiver.componentSecurityContext" 65534 | nindent 12 }}
+            runAsGroup: 65534
           command:
             - sh
             - -c

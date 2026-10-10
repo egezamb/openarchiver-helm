@@ -31,11 +31,23 @@ spec:
       {{- $selector | nindent 6 }}
   template:
     metadata:
+      {{- if or .Values.meilisearch.podAnnotations true }}
+      annotations:
+        # The password is read only at start, so a new one must restart the pod. A changed
+        # existingSecret needs a manual restart.
+        checksum/auth: {{ pick .Values.meilisearch "masterKey" "existingSecret" "existingSecretKey" | toJson | sha256sum }}
+        {{- with .Values.meilisearch.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
       labels:
-        {{- $labels | nindent 8 }}
+        {{- include "open-archiver.componentPodLabels" (dict "root" . "component" "meilisearch" "image" .Values.meilisearch.image) | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      {{- include "open-archiver.componentPodSpec" (dict "root" . "values" .Values.meilisearch) | nindent 6 }}
       securityContext:
+        # Change ownership only when the volume root does not match, not on every start.
+        fsGroupChangePolicy: OnRootMismatch
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
@@ -70,6 +82,9 @@ spec:
                 secretKeyRef:
                   name: {{ include "open-archiver.meilisearch.secretName" . }}
                   key: {{ include "open-archiver.meilisearch.secretKey" . }}
+            {{- with .Values.meilisearch.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           startupProbe:
             httpGet:
               path: /health

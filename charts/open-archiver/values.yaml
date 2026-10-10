@@ -213,6 +213,11 @@ serviceAccount:
   automountServiceAccountToken: false
 
 # Bundled PostgreSQL. Disable it to use externalDatabase.
+# Volume settings of the bundled services (size, storageClass, enabled) cannot change after install:
+# StatefulSet volume templates are immutable. Grow a volume by editing its PVC, if the StorageClass
+# allows expansion. A major PostgreSQL upgrade (17 → 18) needs a dump and restore, and switching
+# between the alpine and debian images changes text sorting, which can corrupt text indexes.
+# Back up with: kubectl exec <release>-open-archiver-postgresql-0 -- pg_dump -U postgres -Fc <db>
 postgresql:
   enabled: true
   image:
@@ -226,7 +231,8 @@ postgresql:
   auth:
     database: open_archive
     username: open_archiver
-    # -- Password of the app role. Generated when empty.
+    # -- Password of the app role. Generated when empty. Like database and username, it is read only
+    # when the database is created: the chart refuses a different value later.
     password: ""
     # -- Password of the "postgres" superuser. Generated when empty.
     postgresPassword: ""
@@ -234,8 +240,10 @@ postgresql:
     # database, so changing them later in values or in the Secret does not change them in the
     # database (use ALTER ROLE for that).
     existingSecret: ""
-    existingSecretPasswordKey: postgres-password
-    existingSecretSuperuserPasswordKey: postgres-superuser-password
+    # Key names follow the common convention (also used by the Bitnami chart): "password" for the
+    # app role, "postgres-password" for the superuser.
+    existingSecretPasswordKey: password
+    existingSecretSuperuserPasswordKey: postgres-password
   persistence:
     enabled: true
     storageClass: ""
@@ -246,6 +254,10 @@ postgresql:
       memory: 256Mi
     limits:
       memory: 1Gi
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 # Used when postgresql.enabled is false
 externalDatabase:
@@ -287,6 +299,13 @@ valkey:
       memory: 64Mi
     limits:
       memory: 512Mi
+  # -- Memory Valkey may use for data, well below resources.limits.memory: saving the append-only
+  # file forks the process, which can briefly need more. Past it, writes fail with an error.
+  maxmemory: 300mb
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 # Used when valkey.enabled is false
 externalRedis:
@@ -316,8 +335,13 @@ meilisearch:
   masterKey: ""
   existingSecret: ""
   existingSecretKey: meili-master-key
-  # -- Seconds between snapshots
+  # -- Seconds between snapshots. They are written to the same volume, so size it for about twice
+  # the index, and copy them elsewhere if you need a backup. The index can also be rebuilt from the
+  # database and the archive (Admin → reindex), slowly for large archives.
   snapshotInterval: 86400
+  # -- Extra environment variables, e.g. MEILI_UPGRADE_DB=true for a dumpless upgrade to a newer
+  # Meilisearch version (see the Meilisearch upgrade guide; take a snapshot first)
+  extraEnv: []
   persistence:
     enabled: true
     storageClass: ""
@@ -328,6 +352,10 @@ meilisearch:
       memory: 256Mi
     limits:
       memory: 2Gi
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 # Used when meilisearch.enabled is false
 externalMeilisearch:
@@ -336,14 +364,16 @@ externalMeilisearch:
   existingSecret: ""
   existingSecretKey: meili-master-key
 
-# Bundled Apache Tika for text extraction from attachments, including OCR of scanned files.
+# Bundled Apache Tika for text extraction from attachments, including OCR of scanned files. It has
+# no authentication and parses untrusted attachments, so it relies on the NetworkPolicy: on a
+# cluster whose CNI does not enforce NetworkPolicy, consider turning it off.
 # Without Tika the app uses its built-in PDF extractor, has no OCR and limits attachments to 50 MB
 # instead of 100 MB. Disable it on small clusters to save about 1 GB of memory.
 tika:
   enabled: true
   image:
     repository: apache/tika
-    tag: 3.2.3.0-full
+    tag: 3.3.1.0-full
     digest: ""
     pullPolicy: IfNotPresent
   resources:
@@ -352,6 +382,10 @@ tika:
       memory: 512Mi
     limits:
       memory: 1536Mi
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 # -- URL of an external Tika server, used when tika.enabled is false. Empty disables Tika.
 externalTika:

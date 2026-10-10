@@ -43,3 +43,8 @@ WARNING: no master key is set for the external Meilisearch, which holds the text
 Archived files are stored unencrypted. Set secrets.storageEncryptionKey before archiving anything
 if you need encryption at rest.
 {{- end }}
+{{- if and .Values.tika.enabled (not .Values.networkPolicy.enabled) }}
+
+WARNING: networkPolicy.enabled is false. Tika has no authentication and parses attachments from
+untrusted mail: every pod in the cluster can reach it, and it can open outgoing connections.
+{{- end }}
