@@ -204,3 +204,45 @@ URL of Tika. Empty when Tika is off, which makes the app fall back to its built-
 {{- .Values.externalTika.url }}
 {{- end }}
 {{- end }}
+
+{{/*
+Connection URL of PostgreSQL. It carries no password: the app gets that as PGPASSWORD, which
+postgres.js reads itself, so passwords with any characters work (the app double-encodes a password
+inside the URL up to v0.6.0).
+*/}}
+{{- define "open-archiver.database.url" -}}
+{{- $user := include "open-archiver.database.user" . | urlquery | replace "+" "%20" }}
+{{- $url := printf "postgresql://%s@%s:%s/%s" $user (include "open-archiver.database.host" .) (include "open-archiver.database.port" .) (include "open-archiver.database.name" .) }}
+{{- if and (not .Values.postgresql.enabled) .Values.externalDatabase.sslMode }}
+{{- $url = printf "%s?sslmode=%s" $url .Values.externalDatabase.sslMode }}
+{{- end }}
+{{- $url }}
+{{- end }}
+
+{{/*
+"true" when the Redis server needs a password. Bundled Valkey always has one; an external server
+may run without.
+*/}}
+{{- define "open-archiver.redis.hasPassword" -}}
+{{- if or .Values.valkey.enabled .Values.externalRedis.existingSecret .Values.externalRedis.password }}true{{ end }}
+{{- end }}
+
+{{/*
+"true" when Meilisearch needs a master key. Bundled Meilisearch always has one.
+*/}}
+{{- define "open-archiver.meilisearch.hasKey" -}}
+{{- if or .Values.meilisearch.enabled .Values.externalMeilisearch.existingSecret .Values.externalMeilisearch.masterKey }}true{{ end }}
+{{- end }}
+
+{{- define "open-archiver.s3.secretName" -}}
+{{- default (include "open-archiver.componentName" (dict "root" . "component" "s3")) .Values.storage.s3.existingSecret }}
+{{- end }}
+
+{{/*
+PersistentVolumeClaim of the local archive, empty when the archive is not on a claim.
+*/}}
+{{- define "open-archiver.storage.claimName" -}}
+{{- if and (eq .Values.storage.type "local") .Values.storage.persistence.enabled }}
+{{- default (include "open-archiver.componentName" (dict "root" . "component" "data")) .Values.storage.persistence.existingClaim }}
+{{- end }}
+{{- end }}

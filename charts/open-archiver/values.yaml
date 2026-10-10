@@ -69,7 +69,8 @@ storage:
   # Volume for local storage, created only when type is local
   persistence:
     enabled: true
-    # -- Use an existing PersistentVolumeClaim instead of creating one
+    # -- Use an existing PersistentVolumeClaim instead of creating one. A claim the chart creates
+    # is kept on `helm uninstall` (helm.sh/resource-policy: keep).
     existingClaim: ""
     # -- StorageClass. Empty uses the cluster default.
     storageClass: ""
@@ -95,7 +96,9 @@ service:
 ingress:
   enabled: false
   className: ""
+  # -- e.g. nginx.ingress.kubernetes.io/proxy-body-size: 100m, so uploads up to BODY_SIZE_LIMIT pass
   annotations: {}
+  # -- The host of appUrl must be one of these
   hosts:
     - host: archive.example.com
       paths:
@@ -107,13 +110,45 @@ ingress:
   #      - archive.example.com
 
 # -- Resources for the app container. The indexing worker alone may use up to
-# config.indexingWorkerMaxOldSpaceMb of heap.
+# indexingWorkerMaxOldSpaceMb of heap.
 resources:
   requests:
     cpu: 250m
     memory: 1Gi
   limits:
     memory: 3Gi
+
+# Probes go through the frontend on the http port; it forwards /api/* to the backend.
+# -- Gives the first start time to download dependencies and run migrations (up to 10 minutes)
+startupProbe:
+  httpGet:
+    path: /api/v1/auth/status
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 60
+# -- Takes the pod out of the Service while the API or the database does not answer
+readinessProbe:
+  httpGet:
+    path: /api/v1/auth/status
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+# -- Restarts the pod when the frontend or the API hangs. Does not touch the database, so a
+# database outage does not restart a healthy pod.
+livenessProbe:
+  httpGet:
+    path: /api
+    port: http
+  periodSeconds: 20
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# -- Extra volumes for the pod, e.g. a share for the app's "Local Path" import
+extraVolumes: []
+# -- Extra volume mounts for the app container
+extraVolumeMounts: []
 
 # Note: on every start the image's entrypoint downloads its Node dependencies from
 # registry.npmjs.org (`pnpm install --prod`) and runs the database migrations. The pod needs egress

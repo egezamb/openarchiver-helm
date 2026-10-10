@@ -1,0 +1,44 @@
+{{- $reserved := list "PORT_BACKEND" "PORT_FRONTEND" "NODE_ENV" "APP_URL" "ORIGIN" "DATABASE_URL" "PGPASSWORD" "REDIS_HOST" "REDIS_PORT" "REDIS_USER" "REDIS_PASSWORD" "REDIS_TLS_ENABLED" "MEILI_HOST" "MEILI_MASTER_KEY" "TIKA_URL" "JWT_SECRET" "ENCRYPTION_KEY" "INDEXING_WORKER_MAX_OLD_SPACE_MB" }}
+{{- range $key, $_ := .Values.env }}
+{{- if or (has $key $reserved) (hasPrefix "STORAGE_" $key) }}
+{{- fail (printf "env.%s is set by the chart. Use the matching chart value instead (see values.yaml)." $key) }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "open-archiver.fullname" . }}
+  labels:
+    {{- include "open-archiver.componentLabels" (dict "root" . "component" "app") | nindent 4 }}
+data:
+  # The backend listens on PORT_BACKEND inside the pod; only the frontend port is exposed.
+  PORT_BACKEND: "4000"
+  PORT_FRONTEND: {{ .Values.service.port | quote }}
+  NODE_ENV: production
+  APP_URL: {{ .Values.appUrl | trimSuffix "/" | quote }}
+  ORIGIN: {{ .Values.appUrl | trimSuffix "/" | quote }}
+  STORAGE_TYPE: {{ .Values.storage.type | quote }}
+  STORAGE_LOCAL_ROOT_PATH: {{ .Values.storage.localRootPath | quote }}
+  {{- if eq .Values.storage.type "s3" }}
+  STORAGE_S3_ENDPOINT: {{ required "storage.s3.endpoint is required when storage.type is s3" .Values.storage.s3.endpoint | quote }}
+  STORAGE_S3_BUCKET: {{ required "storage.s3.bucket is required when storage.type is s3" .Values.storage.s3.bucket | quote }}
+  STORAGE_S3_REGION: {{ .Values.storage.s3.region | quote }}
+  STORAGE_S3_FORCE_PATH_STYLE: {{ .Values.storage.s3.forcePathStyle | quote }}
+  {{- else if ne .Values.storage.type "local" }}
+  {{- fail "storage.type must be local or s3" }}
+  {{- end }}
+  DATABASE_URL: {{ include "open-archiver.database.url" . | quote }}
+  REDIS_HOST: {{ include "open-archiver.redis.host" . | quote }}
+  REDIS_PORT: {{ include "open-archiver.redis.port" . | quote }}
+  {{- if and (not .Values.valkey.enabled) .Values.externalRedis.username }}
+  REDIS_USER: {{ .Values.externalRedis.username | quote }}
+  {{- end }}
+  REDIS_TLS_ENABLED: {{ and (not .Values.valkey.enabled) .Values.externalRedis.tls | ternary "true" "false" | quote }}
+  MEILI_HOST: {{ include "open-archiver.meilisearch.url" . | quote }}
+  {{- with include "open-archiver.tika.url" . }}
+  TIKA_URL: {{ . | quote }}
+  {{- end }}
+  INDEXING_WORKER_MAX_OLD_SPACE_MB: {{ .Values.indexingWorkerMaxOldSpaceMb | quote }}
+  {{- range $key, $value := .Values.env }}
+  {{ $key }}: {{ $value | toString | quote }}
+  {{- end }}
