@@ -1,0 +1,149 @@
+{{- if .Values.postgresql.enabled }}
+{{- $name := include "open-archiver.componentName" (dict "root" . "component" "postgresql") }}
+{{- $labels := include "open-archiver.componentLabels" (dict "root" . "component" "postgresql") }}
+{{- $selector := include "open-archiver.selectorLabels" (dict "root" . "component" "postgresql") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-init
+  labels:
+    {{- $labels | nindent 4 }}
+data:
+  # Runs once, when the database is created: adds the app role as owner of the database. Since
+  # PostgreSQL 15 the public schema belongs to the database owner, so the role can run migrations.
+  10-app-role.sh: |
+    #!/bin/sh
+    set -eu
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+      --set=app_user="$APP_DB_USER" --set=app_password="$APP_DB_PASSWORD" --set=db="$POSTGRES_DB" <<'SQL'
+    CREATE ROLE :"app_user" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD :'app_password';
+    ALTER DATABASE :"db" OWNER TO :"app_user";
+    SQL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+  selector:
+    {{- $selector | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- $labels | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        fsGroup: 70
+        runAsGroup: 70
+      containers:
+        - name: postgresql
+          image: {{ include "open-archiver.componentImage" .Values.postgresql.image }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          securityContext:
+            {{- include "open-archiver.componentSecurityContext" 70 | nindent 12 }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "open-archiver.database.secretName" . }}
+                  key: {{ .Values.postgresql.auth.existingSecretSuperuserPasswordKey }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: APP_DB_USER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: APP_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "open-archiver.database.secretName" . }}
+                  key: {{ .Values.postgresql.auth.existingSecretPasswordKey }}
+            # A subdirectory, because the volume root may hold lost+found, which initdb refuses.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          {{- $isReady := list "pg_isready" "-h" "127.0.0.1" "-U" .Values.postgresql.auth.username "-d" .Values.postgresql.auth.database }}
+          startupProbe:
+            exec:
+              command: {{ toJson $isReady }}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: {{ toJson $isReady }}
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: {{ toJson $isReady }}
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          {{- with .Values.postgresql.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: init
+          configMap:
+            name: {{ $name }}-init
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- if not .Values.postgresql.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.postgresql.persistence.enabled }}
+  # Claims made from this template are not deleted with the StatefulSet or the release.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- $selector | nindent 10 }}
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- with .Values.postgresql.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.persistence.size }}
+  {{- end }}
+{{- end }}

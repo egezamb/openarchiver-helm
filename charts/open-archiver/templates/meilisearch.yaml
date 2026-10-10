@@ -1,0 +1,123 @@
+{{- if .Values.meilisearch.enabled }}
+{{- $name := include "open-archiver.componentName" (dict "root" . "component" "meilisearch") }}
+{{- $labels := include "open-archiver.componentLabels" (dict "root" . "component" "meilisearch") }}
+{{- $selector := include "open-archiver.selectorLabels" (dict "root" . "component" "meilisearch") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 7700
+      targetPort: http
+  selector:
+    {{- $selector | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- $labels | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        runAsGroup: 1000
+      containers:
+        - name: meilisearch
+          image: {{ include "open-archiver.componentImage" .Values.meilisearch.image }}
+          imagePullPolicy: {{ .Values.meilisearch.image.pullPolicy }}
+          securityContext:
+            {{- include "open-archiver.componentSecurityContext" 1000 | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 7700
+          env:
+            # production requires the master key and turns off the search preview UI
+            - name: MEILI_ENV
+              value: production
+            - name: MEILI_NO_ANALYTICS
+              value: "true"
+            - name: MEILI_HTTP_ADDR
+              value: 0.0.0.0:7700
+            - name: MEILI_DB_PATH
+              value: /meili_data/data.ms
+            - name: MEILI_SNAPSHOT_DIR
+              value: /meili_data/snapshots
+            - name: MEILI_DUMP_DIR
+              value: /meili_data/dumps
+            - name: MEILI_SCHEDULE_SNAPSHOT
+              value: {{ .Values.meilisearch.snapshotInterval | quote }}
+            - name: MEILI_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "open-archiver.meilisearch.secretName" . }}
+                  key: {{ include "open-archiver.meilisearch.secretKey" . }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          {{- with .Values.meilisearch.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /meili_data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if not .Values.meilisearch.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.meilisearch.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- $selector | nindent 10 }}
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- with .Values.meilisearch.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.meilisearch.persistence.size }}
+  {{- end }}
+{{- end }}

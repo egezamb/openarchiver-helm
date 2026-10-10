@@ -45,6 +45,33 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /*
+      The entrypoint runs the migrations first and exits when the database is not up yet, so wait
+      for it here instead of crash-looping on the first install.
+      */}}
+      initContainers:
+        - name: wait-for-database
+          image: {{ include "open-archiver.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command:
+            - sh
+            - -c
+            - until nc -z -w 2 "$DB_HOST" "$DB_PORT"; do echo "waiting for PostgreSQL at $DB_HOST:$DB_PORT"; sleep 2; done
+          env:
+            - name: DB_HOST
+              value: {{ include "open-archiver.database.host" . | quote }}
+            - name: DB_PORT
+              value: {{ include "open-archiver.database.port" . | quote }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
       containers:
         - name: open-archiver
           image: {{ include "open-archiver.image" . }}

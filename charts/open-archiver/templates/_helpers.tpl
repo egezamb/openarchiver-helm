@@ -250,3 +250,31 @@ PersistentVolumeClaim of the local archive, empty when the archive is not on a c
 {{- default (include "open-archiver.componentName" (dict "root" . "component" "data")) .Values.storage.persistence.existingClaim }}
 {{- end }}
 {{- end }}
+
+{{/*
+Image of a bundled service, from its `image` block (repository, tag, digest).
+*/}}
+{{- define "open-archiver.componentImage" -}}
+{{- if .digest }}
+{{- printf "%s@%s" .repository .digest }}
+{{- else }}
+{{- printf "%s:%s" .repository .tag }}
+{{- end }}
+{{- end }}
+
+{{/*
+Security context shared by the bundled services: a fixed non-root user, nothing it could use to
+gain privileges, and a read-only image filesystem (writable paths are mounted volumes).
+Usage: include "open-archiver.componentSecurityContext" 999
+*/}}
+{{- define "open-archiver.componentSecurityContext" -}}
+runAsNonRoot: true
+runAsUser: {{ . }}
+allowPrivilegeEscalation: false
+readOnlyRootFilesystem: true
+capabilities:
+  drop:
+    - ALL
+seccompProfile:
+  type: RuntimeDefault
+{{- end }}

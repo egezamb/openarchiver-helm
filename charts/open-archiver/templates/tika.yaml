@@ -1,0 +1,84 @@
+{{- if .Values.tika.enabled }}
+{{- $name := include "open-archiver.componentName" (dict "root" . "component" "tika") }}
+{{- $labels := include "open-archiver.componentLabels" (dict "root" . "component" "tika") }}
+{{- $selector := include "open-archiver.selectorLabels" (dict "root" . "component" "tika") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9998
+      targetPort: http
+  selector:
+    {{- $selector | nindent 4 }}
+---
+# Tika keeps no state, so it is a Deployment. It parses untrusted attachments and has no
+# authentication: the NetworkPolicy limits it to the app and gives it no outgoing connections.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- $labels | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 35002
+        runAsGroup: 35002
+      containers:
+        - name: tika
+          image: {{ include "open-archiver.componentImage" .Values.tika.image }}
+          imagePullPolicy: {{ .Values.tika.image.pullPolicy }}
+          securityContext:
+            {{- include "open-archiver.componentSecurityContext" 35002 | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 9998
+          env:
+            - name: HOME
+              value: /tmp
+          startupProbe:
+            httpGet:
+              path: /tika
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /tika
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /tika
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          {{- with .Values.tika.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+{{- end }}

@@ -1,0 +1,116 @@
+{{- if .Values.valkey.enabled }}
+{{- $name := include "open-archiver.componentName" (dict "root" . "component" "valkey") }}
+{{- $labels := include "open-archiver.componentLabels" (dict "root" . "component" "valkey") }}
+{{- $selector := include "open-archiver.selectorLabels" (dict "root" . "component" "valkey") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: valkey
+  selector:
+    {{- $selector | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- $labels | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 1000
+        runAsGroup: 1000
+      containers:
+        - name: valkey
+          image: {{ include "open-archiver.componentImage" .Values.valkey.image }}
+          imagePullPolicy: {{ .Values.valkey.image.pullPolicy }}
+          securityContext:
+            {{- include "open-archiver.componentSecurityContext" 999 | nindent 12 }}
+          # The password goes into a config file, not onto the command line, where any process
+          # list would show it. noeviction: the job queues must never lose keys under memory
+          # pressure; appendonly keeps queued jobs across restarts.
+          command:
+            - tini
+            - --
+            - sh
+            - -c
+            - |
+              set -eu
+              escaped=$(printf '%s' "$REDISCLI_AUTH" | sed 's/\\/\\\\/g; s/"/\\"/g')
+              printf 'requirepass "%s"\n' "$escaped" > /run/valkey/valkey.conf
+              exec valkey-server /run/valkey/valkey.conf --dir /data --appendonly yes --maxmemory-policy noeviction
+          ports:
+            - name: valkey
+              containerPort: 6379
+          env:
+            # Read by the start script above and by valkey-cli in the probes.
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "open-archiver.redis.secretName" . }}
+                  key: {{ include "open-archiver.redis.secretKey" . }}
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "valkey-cli -h 127.0.0.1 ping | grep -q PONG"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "valkey-cli -h 127.0.0.1 ping | grep -q PONG"]
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          {{- with .Values.valkey.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: run
+              mountPath: /run/valkey
+      volumes:
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        {{- if not .Values.valkey.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.valkey.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- $selector | nindent 10 }}
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- with .Values.valkey.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.valkey.persistence.size }}
+  {{- end }}
+{{- end }}

@@ -197,7 +197,8 @@ affinity: {}
 
 networkPolicy:
   # -- Allow traffic to the web UI port only, keeping the internal API port (4000) closed to other
-  # pods. Needs a CNI that enforces NetworkPolicy.
+  # pods. The bundled services accept connections from the app only and cannot open any outgoing
+  # connection. Needs a CNI that enforces NetworkPolicy.
   enabled: true
   # -- Who may reach the web UI, as NetworkPolicy peers (e.g. the Ingress controller's namespace).
   # Empty allows every source.
@@ -216,17 +217,25 @@ postgresql:
   enabled: true
   image:
     repository: postgres
-    tag: 17-alpine
+    tag: 17.11-alpine
+    digest: ""
     pullPolicy: IfNotPresent
+  # The app connects as its own role, which owns the database but is not a superuser, so a SQL
+  # injection in the app cannot reach superuser features such as COPY ... TO PROGRAM. The
+  # superuser ("postgres") gets a separate password and is only for maintenance.
   auth:
     database: open_archive
     username: open_archiver
-    # -- Generated when empty
+    # -- Password of the app role. Generated when empty.
     password: ""
-    # -- Existing Secret holding the password. Note: PostgreSQL takes the password only when it
-    # creates the database, so changing it later in values does not change it in the database.
+    # -- Password of the "postgres" superuser. Generated when empty.
+    postgresPassword: ""
+    # -- Existing Secret with both passwords. PostgreSQL takes them only when it creates the
+    # database, so changing them later in values or in the Secret does not change them in the
+    # database (use ALTER ROLE for that).
     existingSecret: ""
     existingSecretPasswordKey: postgres-password
+    existingSecretSuperuserPasswordKey: postgres-superuser-password
   persistence:
     enabled: true
     storageClass: ""
@@ -260,7 +269,8 @@ valkey:
   enabled: true
   image:
     repository: valkey/valkey
-    tag: 8-alpine
+    tag: 8.1.10-alpine
+    digest: ""
     pullPolicy: IfNotPresent
   auth:
     # -- Generated when empty
@@ -295,10 +305,14 @@ externalRedis:
 meilisearch:
   enabled: true
   image:
+    # -- The version upstream tests with. Meilisearch keeps its data in a format tied to the
+    # version: before a minor upgrade, check the Meilisearch upgrade guide (dump and import, or a
+    # dumpless upgrade).
     repository: getmeili/meilisearch
-    tag: v1.38
+    tag: v1.38.2
+    digest: ""
     pullPolicy: IfNotPresent
-  # -- Generated when empty
+  # -- Generated when empty. At least 16 bytes: Meilisearch refuses shorter keys in production mode.
   masterKey: ""
   existingSecret: ""
   existingSecretKey: meili-master-key
@@ -329,7 +343,8 @@ tika:
   enabled: true
   image:
     repository: apache/tika
-    tag: 3.2.2.0-full
+    tag: 3.2.3.0-full
+    digest: ""
     pullPolicy: IfNotPresent
   resources:
     requests:
