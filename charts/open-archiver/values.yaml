@@ -18,46 +18,44 @@ imagePullSecrets: []
 # and to build the OAuth redirect URI ({appUrl}/api/v1/oauth/callback).
 appUrl: http://localhost:3000
 
-# Settings passed to the app as environment variables. Secrets do not belong here, see `secrets`.
-config:
-  # -- Cron expression for continuous mailbox sync
-  syncFrequency: "* * * * *"
-  # -- Include Junk and Trash folders in the archive
-  allInclusiveArchive: false
-  # -- Archive unsent drafts from live mailboxes
-  archiveDrafts: false
-  # -- Allow deleting emails and ingestion sources
-  enableDeletion: false
-  # -- Largest request body the frontend accepts, e.g. 100M, 5G or Infinity
-  bodySizeLimit: 100M
-  # -- Mailbox jobs the ingestion worker runs at once (max 32)
-  ingestionWorkerConcurrency: 5
-  # -- Emails archived at once within one mailbox (max 32)
-  ingestionEmailConcurrency: 3
-  # -- Indexing jobs run at once (max 32)
-  indexingWorkerConcurrency: 4
-  # -- Heap ceiling of the indexing worker in MB. Keep it below the container memory limit.
-  indexingWorkerMaxOldSpaceMb: 2048
-  # -- Lifetime of login tokens
-  jwtExpiresIn: 7d
-  # -- Rate limit window in milliseconds
-  rateLimitWindowMs: 60000
-  # -- Requests allowed per IP within the window
-  rateLimitMaxRequests: 100
+# -- Extra settings for the app, as environment variables. Names and meanings are the ones in
+# upstream's .env.example (https://github.com/LogicLabs-OU/OpenArchiver/blob/main/.env.example);
+# anything left out uses the app's own default. Secrets do not belong here, see `secrets`.
+# Set by the chart and not overridable here: PORT_BACKEND, PORT_FRONTEND, NODE_ENV, APP_URL, ORIGIN,
+# STORAGE_*, DATABASE_URL, REDIS_*, MEILI_HOST, MEILI_MASTER_KEY, TIKA_URL and the secrets.
+env:
+  # Required by the app
+  JWT_EXPIRES_IN: 7d
+  # SYNC_FREQUENCY: "* * * * *"
+  # ALL_INCLUSIVE_ARCHIVE: "false"
+  # ENABLE_DELETION: "false"
+  # BODY_SIZE_LIMIT: 100M
+  # INGESTION_WORKER_CONCURRENCY: "5"
+
+# -- Heap ceiling of the indexing worker in MB (INDEXING_WORKER_MAX_OLD_SPACE_MB). It shares the
+# container with the frontend, API, ingestion worker and scheduler, so keep it well below
+# resources.limits.memory. If the container runs out of memory, the kernel kills the biggest
+# process, and a killed API is not restarted inside the container.
+indexingWorkerMaxOldSpaceMb: 1536
 
 # -- Extra environment variables for the app container, as a list of EnvVar objects
 extraEnv: []
 # -- Extra environment variables loaded from ConfigMaps or Secrets (envFrom)
 extraEnvFrom: []
 
-# Application secrets. Leave a value empty to have the chart generate it on first install and keep
-# it on upgrades. Or point `existingSecret` at a Secret you manage yourself.
+# Application secrets. Leave a value empty to have the chart generate it on the first
+# `helm install` and keep it on upgrades. Generated Secrets are kept on `helm uninstall`
+# (helm.sh/resource-policy: keep), because the data stores and the archive depend on them.
+# GitOps tools such as Argo CD render the chart without cluster access, so they would generate new
+# values on every sync: with them, set every `existingSecret` instead. Back these Secrets up together
+# with the database and the archive.
 secrets:
   # -- Name of an existing Secret with the keys below. When set, the chart creates no app Secret.
   existingSecret: ""
   # -- Signs login tokens (key: jwt-secret)
   jwtSecret: ""
-  # -- 64 hex characters; encrypts mailbox credentials (key: encryption-key)
+  # -- Encrypts stored mailbox credentials (key: encryption-key). Any string works; the chart
+  # generates 64 hex characters. Losing it makes the saved credentials unreadable.
   encryptionKey: ""
   # -- Optional, 64 hex characters; encrypts archived files at rest (key: storage-encryption-key).
   # Not generated: once files are written with a key, losing it makes them unreadable.
@@ -66,9 +64,9 @@ secrets:
 storage:
   # -- Where archived emails are stored: local or s3
   type: local
-  # -- Path inside the container for local storage. The app needs it set even with s3.
+  # -- Path inside the container for local storage
   localRootPath: /var/data/open-archiver
-  # Volume for local storage
+  # Volume for local storage, created only when type is local
   persistence:
     enabled: true
     # -- Use an existing PersistentVolumeClaim instead of creating one
@@ -117,6 +115,9 @@ resources:
   limits:
     memory: 3Gi
 
+# Note: on every start the image's entrypoint downloads its Node dependencies from
+# registry.npmjs.org (`pnpm install --prod`) and runs the database migrations. The pod needs egress
+# to the npm registry, and the first start can take a few minutes.
 podAnnotations: {}
 podLabels: {}
 # -- Pod security context. The image runs as root: its entrypoint runs `pnpm install` and
@@ -128,6 +129,8 @@ securityContext:
   capabilities:
     drop:
       - ALL
+  seccompProfile:
+    type: RuntimeDefault
 nodeSelector: {}
 tolerations: []
 affinity: {}
@@ -152,7 +155,8 @@ postgresql:
     username: open_archiver
     # -- Generated when empty
     password: ""
-    # -- Existing Secret holding the password
+    # -- Existing Secret holding the password. Note: PostgreSQL takes the password only when it
+    # creates the database, so changing it later in values does not change it in the database.
     existingSecret: ""
     existingSecretPasswordKey: postgres-password
   persistence:
@@ -173,9 +177,13 @@ externalDatabase:
   database: open_archive
   username: ""
   password: ""
-  # -- Existing Secret holding the password
+  # -- Existing Secret holding the password. Any characters are fine: the password is passed as
+  # PGPASSWORD, not inside the connection URL.
   existingSecret: ""
   existingSecretPasswordKey: postgres-password
+  # -- sslmode for the connection, e.g. require for most managed databases (RDS, Azure). Empty
+  # leaves it out.
+  sslMode: ""
 
 # Bundled Valkey (Redis compatible) for the job queues. Disable it to use externalRedis.
 valkey:
@@ -209,6 +217,7 @@ externalRedis:
   password: ""
   existingSecret: ""
   existingSecretPasswordKey: redis-password
+  # -- Connect with TLS. The app does not verify the server certificate.
   tls: false
 
 # Bundled Meilisearch for full-text search. Disable it to use externalMeilisearch.
@@ -242,8 +251,9 @@ externalMeilisearch:
   existingSecret: ""
   existingSecretKey: meili-master-key
 
-# Bundled Apache Tika for text extraction from attachments. Without Tika the app uses its built-in
-# PDF extractor.
+# Bundled Apache Tika for text extraction from attachments, including OCR of scanned files.
+# Without Tika the app uses its built-in PDF extractor, has no OCR and limits attachments to 50 MB
+# instead of 100 MB. Disable it on small clusters to save about 1 GB of memory.
 tika:
   enabled: true
   image:

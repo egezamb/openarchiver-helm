@@ -23,11 +23,15 @@ name, so `helm install open-archiver .` gives "open-archiver" and not "open-arch
 {{- end }}
 
 {{/*
-Name of one component, e.g. "open-archiver-postgresql".
+Name of one component, e.g. "open-archiver-postgresql". The prefix is shortened before the suffix
+is added, so two components never end up with the same name. 52 characters at most: a StatefulSet
+adds a hash to its name in the controller-revision-hash label, which allows 63.
 Usage: include "open-archiver.componentName" (dict "root" . "component" "postgresql")
 */}}
 {{- define "open-archiver.componentName" -}}
-{{- printf "%s-%s" (include "open-archiver.fullname" .root) .component | trunc 63 | trimSuffix "-" }}
+{{- $suffix := printf "-%s" .component }}
+{{- $base := include "open-archiver.fullname" .root | trunc (int (sub 52 (len $suffix))) | trimSuffix "-" }}
+{{- printf "%s%s" $base $suffix }}
 {{- end }}
 
 {{- define "open-archiver.chart" -}}

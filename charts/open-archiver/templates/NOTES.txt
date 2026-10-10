@@ -1,6 +1,7 @@
 Open Archiver {{ .Chart.AppVersion }} is being deployed as "{{ include "open-archiver.fullname" . }}".
 
-The first start runs the database migrations and can take a few minutes. Watch it with:
+The first start downloads the app's Node dependencies from registry.npmjs.org and runs the
+database migrations, so it can take a few minutes. Watch it with:
 
   kubectl --namespace {{ .Release.Namespace }} logs -f deploy/{{ include "open-archiver.fullname" . }}
 
@@ -16,3 +17,7 @@ Open the web UI locally:
 then go to http://localhost:3000 (appUrl is "{{ .Values.appUrl }}"; it must match the address you
 use in the browser).
 {{- end }}
+
+Back up the Secrets together with the database and the archive. ENCRYPTION_KEY protects the stored
+mailbox credentials and STORAGE_ENCRYPTION_KEY (if set) the archived files; without them that data
+cannot be read. Generated Secrets stay in the namespace after `helm uninstall`.
