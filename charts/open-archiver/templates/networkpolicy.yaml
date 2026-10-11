@@ -23,6 +23,10 @@ spec:
       {{- with .Values.networkPolicy.ingressFrom }}
       from:
         {{- toYaml . | nindent 8 }}
+        # The chart's own `helm test` pod.
+        - podSelector:
+            matchLabels:
+              {{- include "open-archiver.selectorLabels" (dict "root" $ "component" "test") | nindent 14 }}
       {{- end }}
 {{- end }}
 {{- if .Values.networkPolicy.enabled }}

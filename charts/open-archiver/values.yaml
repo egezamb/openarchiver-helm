@@ -217,7 +217,8 @@ serviceAccount:
 # StatefulSet volume templates are immutable. Grow a volume by editing its PVC, if the StorageClass
 # allows expansion. A major PostgreSQL upgrade (17 → 18) needs a dump and restore, and switching
 # between the alpine and debian images changes text sorting, which can corrupt text indexes.
-# Back up with: kubectl exec <release>-open-archiver-postgresql-0 -- pg_dump -U postgres -Fc <db>
+# Back up with: kubectl exec <fullname>-postgresql-0 -- pg_dump -U postgres -Fc <db>, where <fullname> is
+# <release>-open-archiver, or just <release> when the release name already contains open-archiver.
 postgresql:
   enabled: true
   image:
@@ -269,7 +270,8 @@ externalDatabase:
   # -- Existing Secret holding the password. Any characters are fine: the password is passed as
   # PGPASSWORD, not inside the connection URL.
   existingSecret: ""
-  existingSecretPasswordKey: postgres-password
+  # -- Key holding the app role's password (not a superuser's)
+  existingSecretPasswordKey: password
   # -- sslmode for the connection. Use verify-full: require encrypts but does not check the server's
   # certificate, so it does not stop a man in the middle. For a private CA such as the RDS one, mount
   # the CA bundle with extraVolumes/extraVolumeMounts and point NODE_EXTRA_CA_CERTS (extraEnv) at it.

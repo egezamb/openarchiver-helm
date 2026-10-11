@@ -196,7 +196,23 @@
           "type": "boolean"
         },
         "hosts": {
-          "type": "array"
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "host",
+              "paths"
+            ],
+            "properties": {
+              "host": {
+                "type": "string"
+              },
+              "paths": {
+                "type": "array",
+                "minItems": 1
+              }
+            }
+          }
         },
         "tls": {
           "type": "array"
@@ -492,7 +508,7 @@
         },
         "maxmemory": {
           "type": "string",
-          "pattern": "^[0-9]+(b|kb|mb|gb)?$"
+          "pattern": "^[0-9]+([kKmMgG][bB]?|[bB])?$"
         },
         "podAnnotations": {
           "type": "object"

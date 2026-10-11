@@ -38,7 +38,11 @@ app's queues.
 
 WARNING: no master key is set for the external Meilisearch, which holds the text of every email.
 {{- end }}
-{{- if and (not .Values.secrets.storageEncryptionKey) (not .Values.secrets.existingSecret) }}
+{{- $storedKey := false }}
+{{- with lookup "v1" "Secret" .Release.Namespace (include "open-archiver.secretName" .) }}
+{{- if (index (.data | default dict) "storage-encryption-key") }}{{ $storedKey = true }}{{ end }}
+{{- end }}
+{{- if and (not .Values.secrets.storageEncryptionKey) (not .Values.secrets.existingSecret) (not $storedKey) }}
 
 Archived files are stored unencrypted. Set secrets.storageEncryptionKey before archiving anything
 if you need encryption at rest.

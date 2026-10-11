@@ -8,7 +8,10 @@ It deploys the Open Archiver application. It can also run PostgreSQL, Valkey (Re
 
 ## Install
 
+The chart is not in a Helm repository yet, so install it from a clone:
+
 ```sh
+git clone https://github.com/egezamb/openarchiver-helm && cd openarchiver-helm
 helm install archive ./charts/open-archiver \
   --namespace archive --create-namespace \
   --set appUrl=http://localhost:3000
@@ -27,7 +30,7 @@ Turn off the bundled services and point the chart at yours. Credentials come fro
 
 ```sh
 kubectl --namespace archive create secret generic archive-external \
-  --from-literal=postgres-password='…' \
+  --from-literal=password='…' \
   --from-literal=redis-password='…' \
   --from-literal=meili-master-key='…'
 ```
@@ -43,8 +46,9 @@ externalDatabase:
   port: 5432
   database: open_archive
   username: open_archiver
-  existingSecret: archive-external        # key: postgres-password
-  sslMode: verify-full                    # see "TLS to external services"
+  existingSecret: archive-external        # key: password (the app role's)
+  sslMode: verify-full                    # needs TLS on the server; private CA: see "TLS to external services";
+                                          # remove for a plaintext in-cluster database
 
 valkey:
   enabled: false
@@ -92,7 +96,7 @@ Notes for external services:
 Back up these together:
 - the PostgreSQL database;
 - the archive volume or bucket;
-- the chart's Secrets (`kubectl get secret -l app.kubernetes.io/instance=<release>`).
+- the chart's Secrets (`kubectl -n <namespace> get secret -l app.kubernetes.io/instance=<release> -o yaml`).
 
 `ENCRYPTION_KEY` protects the stored mailbox credentials, and `STORAGE_ENCRYPTION_KEY` protects the archived files. Without them that data cannot be read.
 
@@ -115,7 +119,7 @@ kubectl -n archive delete secret,pvc -l app.kubernetes.io/instance=archive
 - **App container (Pod Security `baseline`).**
   - The Open Archiver image runs as root, because its entrypoint installs dependencies and writes to `/app` on every start.
   - All capabilities are dropped, privilege escalation is off, and seccomp is `RuntimeDefault`.
-  - Where the cluster supports user namespaces (Kubernetes 1.33+), `hostUsers: false` maps root in the container to an unprivileged user on the node.
+  - User namespaces are off by default. Where the cluster supports them (Kubernetes 1.33+), set `hostUsers: false` to map root in the container to an unprivileged user on the node.
 - **Bundled services (`restricted`).** They run as fixed non-root users with read-only root filesystems.
 - **PostgreSQL roles.** The app connects as its own role, which owns the database but is not a superuser. The `postgres` superuser can only log in through the local socket (`kubectl exec`).
 - **NetworkPolicy** (on by default, needs a CNI that enforces it).
