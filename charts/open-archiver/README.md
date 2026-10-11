@@ -132,6 +132,8 @@ kubectl -n archive delete secret,pvc -l app.kubernetes.io/instance=archive
 
 ## Upgrading
 
+**Expect about two minutes of downtime on every upgrade or restart of the app.** It runs as a single replica with the `Recreate` strategy, because the archive volume can be mounted by one pod only (ReadWriteOnce) and every pod runs the scheduler and workers. On start, the image installs its Node dependencies and runs the database migrations before it serves again. Measured on kind with [Helmbulance](https://github.com/egezamb/helmbulance)'s `zero-downtime` scenario: a rolling restart failed 84 of 146 requests, with a longest outage of about 2 minutes. Plan upgrades for a quiet time.
+
 The bundled services pin exact versions:
 - **PostgreSQL:** a major upgrade needs a dump and restore.
 - **Meilisearch:** check its upgrade guide before a minor upgrade; `meilisearch.extraEnv` can pass `MEILI_UPGRADE_DB=true`.
