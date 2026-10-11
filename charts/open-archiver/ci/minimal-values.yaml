@@ -1,0 +1,21 @@
+# chart-testing: no Tika, no persistence, NetworkPolicy off.
+networkPolicy:
+  enabled: false
+tika:
+  enabled: false
+storage:
+  persistence:
+    enabled: false
+postgresql:
+  persistence:
+    enabled: false
+valkey:
+  persistence:
+    enabled: false
+meilisearch:
+  persistence:
+    enabled: false
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi

@@ -1,0 +1,8 @@
+# chart-testing (ct) settings, used by the CI workflow and by `ct lint` / `ct install` locally.
+chart-dirs:
+  - charts
+target-branch: main
+validate-maintainers: true
+check-version-increment: true
+# The first start downloads Node dependencies and runs migrations.
+helm-extra-args: --timeout 10m

@@ -1,0 +1,17 @@
+# chart-testing: every bundled service, small volumes for the CI runner.
+storage:
+  persistence:
+    size: 1Gi
+postgresql:
+  persistence:
+    size: 1Gi
+valkey:
+  persistence:
+    size: 1Gi
+meilisearch:
+  persistence:
+    size: 1Gi
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi

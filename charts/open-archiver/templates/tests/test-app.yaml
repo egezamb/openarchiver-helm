@@ -1,0 +1,43 @@
+{{- /*
+`helm test`: the web UI answers, and through it the API and the database (auth/status reads the
+users table). Runs as nobody with the app image, which is already on the node.
+*/}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "open-archiver.componentName" (dict "root" . "component" "test") }}
+  labels:
+    {{- include "open-archiver.componentLabels" (dict "root" . "component" "test") | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    # Kept after a run so `helm test --logs` can read it; replaced by the next run.
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+  containers:
+    - name: test
+      image: {{ include "open-archiver.image" . }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      securityContext:
+        {{- include "open-archiver.componentSecurityContext" 65534 | nindent 8 }}
+      command:
+        - sh
+        - -c
+        - |
+          set -eu
+          url="http://{{ include "open-archiver.fullname" . }}:{{ .Values.service.port }}/api/v1/auth/status"
+          echo "GET $url"
+          body=$(wget -qO- -T 10 "$url")
+          echo "$body"
+          echo "$body" | grep -q '"needsSetup"'
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 64Mi
