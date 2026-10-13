@@ -42,6 +42,9 @@ jobs:
             ct lint --config ct.yaml
           fi
 
+      - name: Artifact Hub image list matches the chart
+        run: scripts/check-images.sh
+
       - name: Validate rendered manifests
         run: |
           curl -sSLo kubeconform.tgz https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
