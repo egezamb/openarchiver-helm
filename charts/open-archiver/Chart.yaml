@@ -3,7 +3,7 @@ name: open-archiver
 description: Self-hosted email archiving with full-text search. Runs Open Archiver with optional bundled PostgreSQL, Valkey, Meilisearch and Apache Tika.
 type: application
 # Version of the chart itself. Bump it on every change to the chart.
-version: 0.1.1
+version: 0.1.2
 # Version of Open Archiver the chart deploys by default (the image tag).
 appVersion: "v0.6.0"
 kubeVersion: ">=1.27.0-0"
@@ -22,6 +22,11 @@ maintainers:
     url: https://github.com/egezamb
 annotations:
   # Read by Artifact Hub (https://artifacthub.io/docs/topics/annotations/helm/).
+  artifacthub.io/changes: |
+    - kind: added
+      description: Published to GHCR as an OCI artifact, signed with keyless cosign
+    - kind: added
+      description: Artifact Hub metadata (license, links, images)
   artifacthub.io/license: Apache-2.0
   artifacthub.io/links: |
     - name: Chart source
