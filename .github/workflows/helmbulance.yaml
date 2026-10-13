@@ -30,6 +30,7 @@ jobs:
 
       # Pinned to a commit: Helmbulance has no release yet.
       - uses: egezamb/helmbulance@fa94c7b2d49f62afed70bf5b97fceaa6367bf62b
+        id: helmbulance
         with:
           chart: charts/open-archiver
           values: |
@@ -38,3 +39,11 @@ jobs:
             upgrade-without-values
           # The first start installs Node dependencies and runs the migrations.
           timeout: 12m
+
+      # The summary shows report.md; the artifact keeps report.json and the run log for a closer look.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: helmbulance-report
+          path: ${{ steps.helmbulance.outputs.report-dir }}
+          retention-days: 14
