@@ -8,11 +8,10 @@ It deploys the Open Archiver application. It can also run PostgreSQL, Valkey (Re
 
 ## Install
 
-The chart is not in a Helm repository yet, so install it from a clone:
+The chart is published to GitHub Container Registry as an OCI artifact (Helm 3.8 or later):
 
 ```sh
-git clone https://github.com/egezamb/openarchiver-helm && cd openarchiver-helm
-helm install archive ./charts/open-archiver \
+helm install archive oci://ghcr.io/egezamb/charts/open-archiver --version 0.1.2 \
   --namespace archive --create-namespace \
   --set appUrl=http://localhost:3000
 
@@ -20,6 +19,18 @@ kubectl --namespace archive port-forward svc/archive-open-archiver 3000:3000
 ```
 
 Then open http://localhost:3000 and create the first admin user.
+
+To install from a clone instead, use `./charts/open-archiver` in place of the `oci://` reference.
+
+### Verify the chart
+
+Every release is signed with keyless [cosign](https://docs.sigstore.dev/) by the release workflow. Check the signature before you install:
+
+```sh
+cosign verify ghcr.io/egezamb/charts/open-archiver:0.1.2 \
+  --certificate-identity-regexp '^https://github.com/egezamb/openarchiver-helm/\.github/workflows/release\.yaml@refs/heads/main$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
 
 - **First start takes a few minutes.** The image downloads its Node dependencies from registry.npmjs.org and runs the database migrations every time it starts, so the pod needs egress to the npm registry.
 - **`appUrl` must be the address users open.** The app uses it for CORS and the login origin check. A different address makes logins fail.
