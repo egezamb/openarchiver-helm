@@ -5,6 +5,7 @@ on:
     paths:
       - charts/**
       - ct.yaml
+      - scripts/**
       - .github/workflows/lint-test.yaml
   push:
     branches:
