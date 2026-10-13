@@ -1,0 +1,11 @@
+# Keeps the SHA-pinned actions current. Image tags in values.yaml are bumped by hand, with the
+# Artifact Hub image list (scripts/check-images.sh fails until both match).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
