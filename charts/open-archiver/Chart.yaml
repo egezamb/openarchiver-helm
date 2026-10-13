@@ -20,3 +20,25 @@ keywords:
 maintainers:
   - name: egezamb
     url: https://github.com/egezamb
+annotations:
+  # Read by Artifact Hub (https://artifacthub.io/docs/topics/annotations/helm/).
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Chart source
+      url: https://github.com/egezamb/openarchiver-helm
+    - name: Open Archiver
+      url: https://github.com/LogicLabs-OU/OpenArchiver
+    - name: Chart request (#242)
+      url: https://github.com/LogicLabs-OU/OpenArchiver/issues/242
+  # Keep in step with the tags in values.yaml; CI checks that they match.
+  artifacthub.io/images: |
+    - name: open-archiver
+      image: logiclabshq/open-archiver:v0.6.0
+    - name: postgresql
+      image: postgres:17.11-alpine
+    - name: valkey
+      image: valkey/valkey:8.1.10-alpine
+    - name: meilisearch
+      image: getmeili/meilisearch:v1.38.2
+    - name: tika
+      image: apache/tika:3.3.1.0-full
