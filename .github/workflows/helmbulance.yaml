@@ -1,0 +1,40 @@
+name: Helmbulance
+
+# Day-two checks on a live release: upgrades without the install-time values, and the restarts and
+# Secret changes they cause. Uses Helmbulance (https://github.com/egezamb/helmbulance), which
+# installs the chart into a throwaway kind cluster on the runner.
+on:
+  pull_request:
+    paths:
+      - charts/**
+      - .github/workflows/helmbulance.yaml
+  schedule:
+    - cron: "17 4 * * 1" # Mondays, to catch a changed image tag upstream
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helmbulance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Pinned to a commit: Helmbulance has no release yet.
+      - uses: egezamb/helmbulance@fa94c7b2d49f62afed70bf5b97fceaa6367bf62b
+        with:
+          chart: charts/open-archiver
+          values: |
+            charts/open-archiver/ci/bundled-values.yaml
+          scenarios: |
+            upgrade-without-values
+          # The first start installs Node dependencies and runs the migrations.
+          timeout: 12m
