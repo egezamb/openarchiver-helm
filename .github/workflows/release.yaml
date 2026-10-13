@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read
+      contents: write # the GitHub release and its tag
       packages: write
       id-token: write # keyless cosign signing through GitHub's OIDC token
     steps:
@@ -94,3 +94,14 @@ jobs:
           oras push "$REPOSITORY/open-archiver:artifacthub.io" \
             --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
             artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+
+      - name: Create the GitHub release
+        if: steps.published.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.chart.outputs.version }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          gh release create "open-archiver-$VERSION" dist/open-archiver-*.tgz \
+            --target "$GITHUB_SHA" --title "open-archiver $VERSION" \
+            --notes "OCI: \`oci://$REPOSITORY/open-archiver\` version \`$VERSION\`, digest \`$DIGEST\`. Signed with keyless cosign; see the README to verify."
