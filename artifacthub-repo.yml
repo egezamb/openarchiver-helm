@@ -1,0 +1,5 @@
+# Artifact Hub repository metadata. The release workflow pushes it to the OCI repository as the
+# tag "artifacthub.io" (https://artifacthub.io/docs/topics/repositories/helm-charts/#oci-support).
+# repositoryID is added once the repository is registered on Artifact Hub, to claim ownership.
+owners:
+  - name: egezamb
