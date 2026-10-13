@@ -1,0 +1,66 @@
+name: Release
+
+# Publishes the chart to GitHub Container Registry as an OCI artifact when its version in
+# Chart.yaml is new. Re-running on an already published version does nothing.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - charts/open-archiver/Chart.yaml
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  REPOSITORY: ghcr.io/${{ github.repository_owner }}/charts
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+
+      - name: Read the chart version
+        id: chart
+        run: |
+          echo "version=$(sed -nE 's/^version: *//p' charts/open-archiver/Chart.yaml)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: echo "$TOKEN" | helm registry login "$REGISTRY" --username "$ACTOR" --password-stdin
+
+      - name: Skip a version that is already published
+        id: published
+        env:
+          VERSION: ${{ steps.chart.outputs.version }}
+        run: |
+          if helm show chart "oci://$REPOSITORY/open-archiver" --version "$VERSION" >/dev/null 2>&1; then
+            echo "open-archiver $VERSION is already published"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package and push
+        if: steps.published.outputs.skip != 'true'
+        id: push
+        run: |
+          helm package charts/open-archiver --destination dist
+          helm push dist/open-archiver-*.tgz "oci://$REPOSITORY" 2>&1 | tee push.log
+          echo "digest=$(sed -nE 's/^Digest: *//p' push.log)" >> "$GITHUB_OUTPUT"
