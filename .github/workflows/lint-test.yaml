@@ -51,10 +51,15 @@ jobs:
           curl -sSLo kubeconform.tgz https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
           echo "c31518ddd122663b3f3aa874cfe8178cb0988de944f29c74a0b9260920d115d3  kubeconform.tgz" | sha256sum -c -
           tar xzf kubeconform.tgz kubeconform
-          for values in "" charts/open-archiver/ci/*-values.yaml; do
-            echo "::group::kubeconform ${values:-defaults}"
-            helm template ci charts/open-archiver ${values:+-f "$values"} | ./kubeconform -strict -summary -kubernetes-version 1.30.0
-            echo "::endgroup::"
+          # The oldest Kubernetes the chart claims (kubeVersion in Chart.yaml is >=1.27) up to a
+          # current one, so a removed or new API version shows up before users hit it.
+          for k8s in 1.27.0 1.30.0 1.33.0; do
+            for values in "" charts/open-archiver/ci/*-values.yaml; do
+              echo "::group::kubeconform $k8s ${values:-defaults}"
+              helm template ci charts/open-archiver --kube-version "$k8s" ${values:+-f "$values"} \
+                | ./kubeconform -strict -summary -kubernetes-version "$k8s"
+              echo "::endgroup::"
+            done
           done
 
   install:
