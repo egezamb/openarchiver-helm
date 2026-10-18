@@ -12,6 +12,7 @@ Every pull request that touches the chart runs:
 - `kubeconform` on the rendered manifests for Kubernetes 1.27, 1.30 and 1.34 (the newest with published schemas);
 - a check that the Artifact Hub image list matches the images the chart deploys;
 - [Helmbulance](https://github.com/egezamb/helmbulance)'s `upgrade-without-values`: it upgrades the live release without the install-time values and reports Secrets that change and pods that restart for nothing. It also runs weekly, to catch a changed image upstream.
+- Helmbulance's `chart-upgrade`: it installs the latest chart published on GHCR and upgrades it to the chart in the PR, the upgrade users make, and reports a failed upgrade, Secrets the new version changes or drops, and workloads that are not healthy afterwards.
 
 ## License
 

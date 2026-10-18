@@ -1,7 +1,7 @@
 name: Helmbulance
 
-# Day-two checks on a live release: upgrades without the install-time values, and the restarts and
-# Secret changes they cause. Uses Helmbulance (https://github.com/egezamb/helmbulance), which
+# Day-two checks on a live release: upgrades without the install-time values, the restarts and
+# Secret changes they cause, and an upgrade from the version users run now. Uses Helmbulance (https://github.com/egezamb/helmbulance), which
 # installs the chart into a throwaway kind cluster on the runner.
 on:
   pull_request:
@@ -29,7 +29,7 @@ jobs:
           persist-credentials: false
 
       # Pinned to a commit: Helmbulance has no release yet.
-      - uses: egezamb/helmbulance@fa94c7b2d49f62afed70bf5b97fceaa6367bf62b
+      - uses: egezamb/helmbulance@586908ae9044e2e282b629410f8e91f34f19149b
         id: helmbulance
         with:
           chart: charts/open-archiver
@@ -45,5 +45,46 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: helmbulance-report
+          path: ${{ steps.helmbulance.outputs.report-dir }}
+          retention-days: 14
+
+  # Users upgrade from the published chart, not from the commit before this PR: install the latest
+  # release from GHCR and upgrade it to the chart in the PR, with the same values.
+  chart-upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+
+      - name: Latest published version
+        id: published
+        run: |
+          version=$(helm show chart oci://ghcr.io/egezamb/charts/open-archiver | awk '/^version:/ {print $2}')
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: egezamb/helmbulance@586908ae9044e2e282b629410f8e91f34f19149b
+        id: helmbulance
+        with:
+          chart: charts/open-archiver
+          values: |
+            charts/open-archiver/ci/bundled-values.yaml
+          scenarios: |
+            chart-upgrade
+          from: oci://ghcr.io/egezamb/charts/open-archiver
+          from-version: ${{ steps.published.outputs.version }}
+          allow-remote: "true"
+          timeout: 12m
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: helmbulance-chart-upgrade-report
           path: ${{ steps.helmbulance.outputs.report-dir }}
           retention-days: 14
