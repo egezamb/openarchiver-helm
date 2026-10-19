@@ -1,0 +1,79 @@
+suite: network policies
+templates:
+  - templates/networkpolicy.yaml
+release:
+  name: oa
+tests:
+  - it: lets traffic reach only the app's web port
+    documentSelector:
+      path: metadata.name
+      value: oa-open-archiver
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value: [Ingress]
+      - equal:
+          path: spec.ingress[0].ports
+          value:
+            - port: http
+              protocol: TCP
+
+  - it: lets only the app reach PostgreSQL, and PostgreSQL reach nothing
+    documentSelector:
+      path: metadata.name
+      value: oa-open-archiver-postgresql
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value: [Ingress, Egress]
+      - notExists:
+          path: spec.egress
+      - equal:
+          path: spec.ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: app
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: postgresql
+
+  - it: writes one policy for the app and one per bundled service
+    asserts:
+      - hasDocuments:
+          count: 5
+
+  - it: writes no policy for a bundled service that is turned off
+    set:
+      postgresql.enabled: false
+      externalDatabase.host: db.example.com
+      externalDatabase.password: secret
+    asserts:
+      - hasDocuments:
+          count: 4
+      - containsDocument:
+          kind: NetworkPolicy
+          apiVersion: networking.k8s.io/v1
+          name: oa-open-archiver-postgresql
+        not: true
+
+  - it: adds the chart's test pod when ingressFrom limits the sources
+    set:
+      networkPolicy.ingressFrom:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+    documentSelector:
+      path: metadata.name
+      value: oa-open-archiver
+    asserts:
+      - lengthEqual:
+          path: spec.ingress[0].from
+          count: 2
+      - equal:
+          path: spec.ingress[0].from[1].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: test
+
+  - it: writes nothing when networkPolicy.enabled is false
+    set:
+      networkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
