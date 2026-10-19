@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - charts/**
+      - tests/**
       - ct.yaml
       - scripts/**
       - .github/workflows/lint-test.yaml
@@ -45,6 +46,13 @@ jobs:
 
       - name: Artifact Hub image list matches the chart
         run: scripts/check-images.sh
+
+      # Template unit tests (tests/unit, outside the chart so they are not packaged). The plugin's
+      # install hook downloads the release archive for this version and checks its checksum.
+      - name: helm unittest
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.2.1 --verify=false
+          helm unittest charts/open-archiver -f '../../tests/unit/*_test.yaml'
 
       - name: Validate rendered manifests
         run: |
