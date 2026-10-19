@@ -1,0 +1,117 @@
+suite: app deployment
+# The pod template's checksum annotation renders configmap.yaml, so it has to be loaded too.
+templates:
+  - templates/deployment.yaml
+  - templates/configmap.yaml
+release:
+  name: oa
+tests:
+  - it: runs one pod and stops the old one before the new one starts
+    template: templates/deployment.yaml
+    # Every pod runs the scheduler and the workers, and the archive volume is ReadWriteOnce.
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+
+  - it: starts without a storage key by default
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: STORAGE_ENCRYPTION_KEY
+            valueFrom:
+              secretKeyRef:
+                name: oa-open-archiver
+                key: storage-encryption-key
+                optional: true
+
+  - it: refuses to start without the storage key when requireStorageEncryptionKey is set
+    template: templates/deployment.yaml
+    set:
+      secrets.requireStorageEncryptionKey: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: STORAGE_ENCRYPTION_KEY
+            valueFrom:
+              secretKeyRef:
+                name: oa-open-archiver
+                key: storage-encryption-key
+                optional: false
+
+  - it: mounts the chart's claim for local storage
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+            persistentVolumeClaim:
+              claimName: oa-open-archiver-data
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: data
+            mountPath: /var/data/open-archiver
+
+  - it: mounts an existing claim instead when one is named
+    template: templates/deployment.yaml
+    set:
+      storage.persistence.existingClaim: my-archive
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+            persistentVolumeClaim:
+              claimName: my-archive
+
+  - it: mounts no archive volume and reads S3 keys from a Secret with S3 storage
+    template: templates/deployment.yaml
+    set:
+      storage.type: s3
+      storage.s3.endpoint: https://s3.eu-central-1.amazonaws.com
+      storage.s3.bucket: archive
+      storage.s3.region: eu-central-1
+      storage.s3.existingSecret: s3-keys
+    asserts:
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+          any: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: STORAGE_S3_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: s3-keys
+                key: s3-secret-access-key
+
+  - it: waits for an external database at its own host and port
+    template: templates/deployment.yaml
+    set:
+      postgresql.enabled: false
+      externalDatabase.host: db.example.com
+      externalDatabase.port: 6432
+      externalDatabase.username: archiver
+      externalDatabase.database: archive
+      externalDatabase.password: secret
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: DB_HOST
+            value: db.example.com
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: DB_PORT
+            value: "6432"
