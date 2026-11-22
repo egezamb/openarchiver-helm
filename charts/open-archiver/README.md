@@ -32,7 +32,7 @@ cosign verify ghcr.io/egezamb/charts/open-archiver:0.1.2 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-- **First start takes a few minutes.** The image downloads its Node dependencies from registry.npmjs.org and runs the database migrations every time it starts, so the pod needs egress to the npm registry.
+- **Every start runs the database migrations first**, so the pod is ready a little after the container starts. Since v0.6.1 the dependencies are part of the image and the pod no longer needs the npm registry.
 - **`appUrl` must be the address users open.** The app uses it for CORS and the login origin check. A different address makes logins fail.
 
 ## With your own PostgreSQL, Redis and Meilisearch
