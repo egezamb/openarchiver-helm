@@ -1,7 +1,6 @@
 Open Archiver {{ .Chart.AppVersion }} is being deployed as "{{ include "open-archiver.fullname" . }}".
 
-The first start downloads the app's Node dependencies from registry.npmjs.org and runs the
-database migrations, so it can take a few minutes. Watch it with:
+Each start runs the database migrations first, which can take a minute. Watch it with:
 
   kubectl --namespace {{ .Release.Namespace }} logs -f deploy/{{ include "open-archiver.fullname" . }}
 

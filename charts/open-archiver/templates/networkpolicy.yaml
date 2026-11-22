@@ -2,7 +2,7 @@
 {{- /*
 Lets traffic reach the web UI port only. The API also listens on 4000 inside the pod, and the
 frontend proxy is the only thing meant to talk to it. Probes come from the kubelet and are not
-affected. Egress stays open: the app needs npm at start, the mail servers it archives and S3.
+affected. Egress stays open: the app needs the mail servers it archives and S3.
 */}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

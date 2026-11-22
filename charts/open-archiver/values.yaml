@@ -135,7 +135,7 @@ resources:
     memory: 3Gi
 
 # Probes go through the frontend on the http port; it forwards /api/* to the backend.
-# -- Gives the first start time to download dependencies and run migrations (up to 10 minutes)
+# -- Gives the first start time to run the migrations on a large archive (up to 10 minutes)
 startupProbe:
   httpGet:
     path: /api/v1/auth/status
@@ -171,17 +171,16 @@ extraVolumes: []
 # -- Extra volume mounts for the app container
 extraVolumeMounts: []
 
-# Note: on every start the image's entrypoint downloads its Node dependencies from
-# registry.npmjs.org (`pnpm install --prod`) and runs the database migrations. The pod needs egress
-# to the npm registry, and the first start can take a few minutes.
+# Note: on every start the image's entrypoint runs the database migrations. Since v0.6.1 the
+# dependencies are part of the image, so the pod no longer needs the npm registry.
 podAnnotations: {}
 podLabels: {}
 # -- Run the pod in a user namespace (hostUsers: false), so root in the container is an
 # unprivileged user on the node. Needs Kubernetes 1.33+ and a runtime and filesystem that support
 # it. Unset leaves the cluster default.
 hostUsers: null
-# -- Pod security context. The image runs as root: its entrypoint runs `pnpm install` and
-# migrations on start and writes to /app, so runAsNonRoot is not possible without an image change.
+# -- Pod security context. The image runs as root: it sets no USER and its files under /app belong
+# to root, so runAsNonRoot is not possible without an image change.
 podSecurityContext: {}
 # -- Container security context
 securityContext:
