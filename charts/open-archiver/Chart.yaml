@@ -3,7 +3,7 @@ name: open-archiver
 description: Self-hosted email archiving with full-text search. Runs Open Archiver with optional bundled PostgreSQL, Valkey, Meilisearch and Apache Tika.
 type: application
 # Version of the chart itself. Bump it on every change to the chart.
-version: 0.1.2
+version: 0.2.0
 # Version of Open Archiver the chart deploys by default (the image tag).
 appVersion: "v0.6.2"
 kubeVersion: ">=1.27.0-0"
@@ -23,10 +23,12 @@ maintainers:
 annotations:
   # Read by Artifact Hub (https://artifacthub.io/docs/topics/annotations/helm/).
   artifacthub.io/changes: |
-    - kind: added
-      description: Published to GHCR as an OCI artifact, signed with keyless cosign
-    - kind: added
-      description: Artifact Hub metadata (license, links, images)
+    - kind: security
+      description: Open Archiver v0.6.2, rebuilt on Node.js 22.23.4 for CVE-2026-111497
+    - kind: changed
+      description: Bundled Apache Tika 4.1.0, as Open Archiver's own compose file
+    - kind: changed
+      description: The app no longer needs the npm registry at start (since v0.6.1)
   artifacthub.io/license: Apache-2.0
   artifacthub.io/links: |
     - name: Chart source

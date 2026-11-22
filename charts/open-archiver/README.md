@@ -2,7 +2,7 @@
 
 A Helm chart for [Open Archiver](https://github.com/LogicLabs-OU/OpenArchiver), the self-hosted email archive with full-text search.
 
-> **Status:** community chart, not yet official. It is offered upstream in [OpenArchiver#242](https://github.com/LogicLabs-OU/OpenArchiver/issues/242). Version 0.1.0 deploys Open Archiver v0.6.0. Feedback and test reports are very welcome.
+> **Status:** community chart, not yet official. It is offered upstream in [OpenArchiver#242](https://github.com/LogicLabs-OU/OpenArchiver/issues/242). Version 0.2.0 deploys Open Archiver v0.6.2. Feedback and test reports are very welcome.
 
 It deploys the Open Archiver application. It can also run PostgreSQL, Valkey (Redis-compatible), Meilisearch and Apache Tika for you; each one can be replaced by an existing service of your own.
 
@@ -11,7 +11,7 @@ It deploys the Open Archiver application. It can also run PostgreSQL, Valkey (Re
 The chart is published to GitHub Container Registry as an OCI artifact (Helm 3.8 or later):
 
 ```sh
-helm install archive oci://ghcr.io/egezamb/charts/open-archiver --version 0.1.2 \
+helm install archive oci://ghcr.io/egezamb/charts/open-archiver --version 0.2.0 \
   --namespace archive --create-namespace \
   --set appUrl=http://localhost:3000
 
@@ -27,7 +27,7 @@ To install from a clone instead, use `./charts/open-archiver` in place of the `o
 Every release is signed with keyless [cosign](https://docs.sigstore.dev/) by the release workflow. Check the signature before you install:
 
 ```sh
-cosign verify ghcr.io/egezamb/charts/open-archiver:0.1.2 \
+cosign verify ghcr.io/egezamb/charts/open-archiver:0.2.0 \
   --certificate-identity-regexp '^https://github.com/egezamb/openarchiver-helm/\.github/workflows/release\.yaml@refs/heads/main$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
