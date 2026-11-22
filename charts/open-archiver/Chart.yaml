@@ -46,4 +46,4 @@ annotations:
     - name: meilisearch
       image: getmeili/meilisearch:v1.38.2
     - name: tika
-      image: apache/tika:3.3.1.0-full
+      image: apache/tika:4.1.0-full
