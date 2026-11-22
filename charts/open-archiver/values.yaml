@@ -374,7 +374,7 @@ tika:
   enabled: true
   image:
     repository: apache/tika
-    tag: 3.3.1.0-full
+    tag: 4.1.0-full
     digest: ""
     pullPolicy: IfNotPresent
   resources:
