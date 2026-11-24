@@ -29,7 +29,7 @@ jobs:
           persist-credentials: false
 
       # Pinned to a commit: Helmbulance has no release yet.
-      - uses: egezamb/helmbulance@586908ae9044e2e282b629410f8e91f34f19149b
+      - uses: egezamb/helmbulance@174c1b4ebe4607272e85cc3fadd782e45f3aae72
         id: helmbulance
         with:
           chart: charts/open-archiver
@@ -69,7 +69,7 @@ jobs:
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - uses: egezamb/helmbulance@586908ae9044e2e282b629410f8e91f34f19149b
+      - uses: egezamb/helmbulance@174c1b4ebe4607272e85cc3fadd782e45f3aae72
         id: helmbulance
         with:
           chart: charts/open-archiver
